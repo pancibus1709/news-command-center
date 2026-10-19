@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# News Command Center
 
-## Getting Started
+A terminal-style board for credit and equity work. One screen for markets, credit spreads, and seven news wires; one page per company that pulls price, valuation, operating and credit metrics, street estimates, SEC filings, five years of audited fundamentals, and the latest headlines.
 
-First, run the development server:
+Everything comes from public sources with no API keys: Yahoo Finance (quotes, TTM financials, estimates), FRED (ICE BofA OAS spreads, Treasury curve, policy rates), SEC EDGAR (filings and XBRL company facts), and 23 RSS and Google News wires (CNBC, WSJ, FT, MarketWatch, Federal Reserve, SEC, Politico, The Hill, TechCrunch, plus keyword wires for credit, distressed, ratings, macro, regulatory and AI).
+
+## Run
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000. Press `/` to jump to the search bar, type a ticker or company name, Enter opens the company page.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env.local` and set `SEC_USER_AGENT` to your name and email. SEC asks for this on every request and throttles anonymous clients.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Layout
 
-## Learn More
+`src/lib/feeds.ts` is the wire registry. Add a feed by appending one line with a category and weight. `src/lib/news.ts` fetches all feeds in parallel, dedupes on headline, tags stories across categories, and drops anything older than three days. `src/lib/markets.ts` and `src/lib/credit.ts` build the quote board and the FRED credit monitor. `src/lib/sec.ts` resolves ticker to CIK, pulls recent material filings, and extracts annual XBRL facts with alias fallback for concept names that drift between filers. `src/lib/company.ts` assembles the company profile. All upstream calls go through the TTL cache in `src/lib/cache.ts` (news 3 min, quotes 1 min, FRED 1 hour, SEC 6 to 12 hours).
 
-To learn more about Next.js, take a look at the following resources:
+API routes under `src/app/api/` expose the same data as JSON: `/api/news`, `/api/markets`, `/api/credit`, `/api/company/[ticker]`, `/api/search?q=`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Known limits
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Yahoo Finance is unofficial and can rate-limit. Google News wires are keyword searches, so they catch noise. XBRL facts cover US registrants only; foreign filers show filings but no annual table. Nothing here is investment advice.
