@@ -65,10 +65,10 @@ export const FEEDS: Feed[] = [
 export const CATEGORY_LABELS: Record<Category, string> = {
   markets: "Markets",
   credit: "Credit",
-  economy: "Economy & Fed",
+  economy: "Macro",
   politics: "Politics",
-  regulatory: "Regulatory",
-  ai: "AI & Tech",
+  regulatory: "Reg",
+  ai: "AI/Tech",
   world: "World",
 };
 
