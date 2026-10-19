@@ -119,6 +119,13 @@ input, select {
 }
 input:focus { border-color: var(--amber); }
 
+/* Keyboard focus: amber outline, inset so it never clips in overflow panels. */
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+input:focus-visible { outline: none; }
+
 table { border-collapse: collapse; width: 100%; }
 th {
   text-align: left;
