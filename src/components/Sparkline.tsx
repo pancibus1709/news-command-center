@@ -4,15 +4,20 @@ export function Sparkline({
   height = 28,
   color,
   invert = false,
+  neutral = false,
+  label,
 }: {
   points: number[];
   width?: number;
   height?: number;
   color?: string;
-  /** For spreads, rising is bad. Pass invert so the color flips. */
+  /** For spreads and rates, rising is risk-off. Pass invert so the color flips. */
   invert?: boolean;
+  /** Direction has no risk reading (curve, breakeven): draw in dim gray. */
+  neutral?: boolean;
+  label?: string;
 }) {
-  if (points.length < 2) return <svg width={width} height={height} />;
+  if (points.length < 2) return <svg width={width} height={height} aria-hidden="true" />;
   const min = Math.min(...points);
   const max = Math.max(...points);
   const span = max - min || 1;
@@ -21,9 +26,11 @@ export function Sparkline({
     .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(height - 2 - ((p - min) / span) * (height - 4)).toFixed(1)}`)
     .join(" ");
   const rising = points[points.length - 1] >= points[0];
-  const stroke = color ?? ((rising && !invert) || (!rising && invert) ? "var(--up)" : "var(--down)");
+  const stroke = color ?? (neutral ? "var(--fg-dim)" : (rising && !invert) || (!rising && invert) ? "var(--up)" : "var(--down)");
+  const text = `${label ?? "Trend"}: ${rising ? "rising" : "falling"} over ${points.length} observations`;
   return (
-    <svg width={width} height={height} className="shrink-0">
+    <svg width={width} height={height} className="shrink-0" role="img" aria-label={text}>
+      <title>{text}</title>
       <path d={d} fill="none" stroke={stroke} strokeWidth={1.25} />
     </svg>
   );
@@ -35,7 +42,7 @@ export function LineChart({ data, height = 300 }: { data: { d: string; c: number
   // Scales uniformly with its container (no preserveAspectRatio="none"), so
   // axis text keeps its proportions on narrow screens.
   const width = 1000;
-  const padL = 56;
+  const padL = 64;
   const padB = 22;
   const padT = 10;
   const vals = data.map((p) => p.c);
@@ -52,7 +59,7 @@ export function LineChart({ data, height = 300 }: { data: { d: string; c: number
   const yTicks = Array.from({ length: ticks + 1 }, (_, i) => min + (span * i) / ticks);
   const xIdx = [0, Math.floor(data.length / 4), Math.floor(data.length / 2), Math.floor((3 * data.length) / 4), data.length - 1];
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto block">
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto block" role="img" aria-label={`One year price history, ${data[0].c} to ${data[data.length - 1].c}`}>
       <defs>
         <linearGradient id="fill" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor={stroke} stopOpacity="0.25" />
@@ -62,13 +69,13 @@ export function LineChart({ data, height = 300 }: { data: { d: string; c: number
       {yTicks.map((t) => (
         <g key={t}>
           <line x1={padL} x2={width - 8} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeDasharray="2 4" />
-          <text x={padL - 6} y={y(t) + 4} fill="var(--fg-dim)" fontSize="14" textAnchor="end">
+          <text x={padL - 6} y={y(t) + 4} fill="var(--fg-dim)" fontSize="18" textAnchor="end">
             {t.toFixed(t > 100 ? 0 : 2)}
           </text>
         </g>
       ))}
       {xIdx.map((i) => (
-        <text key={i} x={x(i)} y={height - 6} fill="var(--fg-dim)" fontSize="14" textAnchor={i === 0 ? "start" : i === data.length - 1 ? "end" : "middle"}>
+        <text key={i} x={x(i)} y={height - 6} fill="var(--fg-dim)" fontSize="18" textAnchor={i === 0 ? "start" : i === data.length - 1 ? "end" : "middle"}>
           {data[i].d.slice(0, 7)}
         </text>
       ))}

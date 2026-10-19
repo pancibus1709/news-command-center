@@ -5,11 +5,11 @@ import type { MarketBoard, Quote } from "@/lib/markets";
 import type { Series } from "@/lib/credit";
 import type { NewsItem, FeedStatus } from "@/lib/news";
 import { CATEGORY_LABELS, CATEGORY_ORDER, type Category } from "@/lib/feeds";
-import { dirClass, fmtNum, fmtPct, fmtSigned, hhmm, timeAgo } from "@/lib/format";
+import { dirClass, fmtBp, fmtNum, fmtPct, fmtSigned, hhmm, timeAgo } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
 
 type NewsPayload = { items: NewsItem[]; status: FeedStatus[]; fetchedAt: string };
-type CreditPayload = { series: Series[]; fetchedAt: string };
+type CreditPayload = { series: Series[]; fetchedAt: string; latestObs: string | null };
 
 function usePoll<T>(url: string, ms: number) {
   const [data, setData] = useState<T | null>(null);
@@ -19,7 +19,7 @@ function usePoll<T>(url: string, ms: number) {
     const load = async () => {
       try {
         const r = await fetch(url, { cache: "no-store" });
-        if (!r.ok) throw new Error(`${r.status}`);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = (await r.json()) as T;
         if (alive) {
           setData(j);
@@ -49,18 +49,23 @@ const CAT_COLOR: Record<Category, string> = {
   world: "text-dim",
 };
 
+const priceDecimals = (q: Quote) => (q.price !== null && q.price < 10 ? 4 : 2);
+
 function QuoteRows({ rows, link }: { rows: Quote[]; link?: boolean }) {
   return (
     <table>
       <tbody>
         {rows.map((q) => {
-          const cls = dirClass(q.changePct);
+          const isYield = q.unit === "yield";
+          // Yields move in basis points, not percent of the yield. A 10Y going
+          // 5.098 to 5.131 is +3.3bp, and a desk reads "+0.65%" as 65bp.
+          const cls = dirClass(q.change);
           const inner = (
             <>
               <td className="text-fg w-[42%] whitespace-nowrap overflow-hidden text-ellipsis max-w-0" title={q.label}>{q.label}</td>
-              <td className="num">{q.unit === "yield" ? fmtNum(q.price, 3) : fmtNum(q.price, q.price !== null && q.price < 10 ? 4 : 2)}</td>
-              <td className={`num ${cls}`}>{q.unit === "yield" ? fmtSigned(q.change, 3) : fmtSigned(q.change)}</td>
-              <td className={`num ${cls} w-16`}>{fmtPct(q.changePct)}</td>
+              <td className="num">{isYield ? `${fmtNum(q.price, 3)}%` : fmtNum(q.price, priceDecimals(q))}</td>
+              <td className={`num ${cls}`}>{isYield ? fmtBp(q.change) : fmtSigned(q.change, priceDecimals(q))}</td>
+              <td className={`num ${cls} w-16`}>{isYield ? "" : fmtPct(q.changePct)}</td>
             </>
           );
           return (
@@ -94,18 +99,29 @@ function Panel({ title, right, children, id, className = "" }: { title: string; 
   );
 }
 
+function Unavailable({ what, detail }: { what: string; detail?: string | null }) {
+  return (
+    <div className="p-2 text-down text-[11px]">
+      {what} unavailable{detail ? ` (${detail})` : ""}. Retrying on the next cycle.
+    </div>
+  );
+}
+
 function Tape({ board }: { board: MarketBoard | null }) {
   const items = board ? [...board.indices, ...board.rates, ...board.risk, ...board.creditEtfs] : [];
   if (!items.length) return <div className="h-7 border-b border-line skeleton" />;
-  const cell = (q: Quote, i: number) => (
-    <span key={`${q.symbol}-${i}`} className="inline-flex gap-2">
-      <span className="text-dim">{q.label}</span>
-      <span>{q.unit === "yield" ? fmtNum(q.price, 3) : fmtNum(q.price)}</span>
-      <span className={dirClass(q.changePct)}>{fmtPct(q.changePct)}</span>
-    </span>
-  );
+  const cell = (q: Quote, i: number) => {
+    const isYield = q.unit === "yield";
+    return (
+      <span key={`${q.symbol}-${i}`} className="inline-flex gap-2">
+        <span className="text-dim">{q.label}</span>
+        <span>{isYield ? `${fmtNum(q.price, 3)}%` : fmtNum(q.price, priceDecimals(q))}</span>
+        <span className={dirClass(q.change)}>{isYield ? fmtBp(q.change) : fmtPct(q.changePct)}</span>
+      </span>
+    );
+  };
   return (
-    <div className="h-7 border-b border-line bg-panel overflow-hidden flex items-center">
+    <div className="h-7 border-b border-line bg-panel overflow-hidden flex items-center" aria-hidden="true">
       <div className="tape px-4">
         {items.map(cell)}
         {items.map((q, i) => cell(q, i + 100))}
@@ -122,7 +138,14 @@ function SectorHeat({ sectors }: { sectors: Quote[] }) {
         const a = Math.min(Math.abs(v) / 2.5, 1);
         const bg = v >= 0 ? `rgba(45,211,111,${0.12 + a * 0.55})` : `rgba(255,77,77,${0.12 + a * 0.55})`;
         return (
-          <a key={s.symbol} href={`/company/${s.symbol}`} className="p-1.5 text-center leading-tight hover:outline hover:outline-amber" style={{ background: bg }}>
+          <a
+            key={s.symbol}
+            href={`/company/${s.symbol}`}
+            className="p-1.5 text-center leading-tight hover:outline hover:outline-amber"
+            style={{ background: bg }}
+            title={`${s.symbol} ${fmtPct(s.changePct)}`}
+            aria-label={`${s.label} ${s.symbol} ${fmtPct(s.changePct)}`}
+          >
             <div className="text-[10px] text-fg/90 truncate">{s.label}</div>
             <div className="text-[12px] font-semibold">{fmtPct(s.changePct)}</div>
           </a>
@@ -133,10 +156,11 @@ function SectorHeat({ sectors }: { sectors: Quote[] }) {
 }
 
 function CreditRows({ series }: { series: Series[] }) {
+  if (series.every((s) => s.latest === null)) return <Unavailable what="FRED" />;
   const groups: { key: Series["group"]; label: string }[] = [
     { key: "spreads", label: "Spreads (OAS, bp)" },
-    { key: "rates", label: "Rates (%)" },
-    { key: "policy", label: "Policy & Funding (%)" },
+    { key: "rates", label: "Rates (%, FRED close, deltas in bp)" },
+    { key: "policy", label: "Policy & Funding (%, deltas in bp)" },
   ];
   return (
     <table>
@@ -167,9 +191,10 @@ function GroupRows({ label, rows }: { label: string; rows: Series[] }) {
       </tr>
       {rows.map((s) => {
         const bp = s.unit === "bp";
-        const inv = s.group === "spreads"; // wider spreads = risk-off = red
-        const d = (v: number | null) => (bp ? fmtSigned(v, 0) : fmtSigned(v, 2));
-        const c = (v: number | null) => (v === null ? "flat" : (v > 0) !== inv ? "up" : v === 0 ? "flat" : "down");
+        // Credit desk convention: wider spreads and higher rates are risk-off
+        // (red). Curve and breakeven direction is ambiguous, so no color.
+        const d = (v: number | null) => (v === null ? "--" : bp ? fmtSigned(v, 0) : fmtBp(v, 0));
+        const c = (v: number | null) => (v === null || v === 0 || s.rising === "neutral" ? "flat" : v > 0 ? "down" : "up");
         return (
           <tr key={s.id} className="row-hover" title={`FRED ${s.id}, as of ${s.latestDate ?? "n/a"}`}>
             <td>
@@ -177,10 +202,19 @@ function GroupRows({ label, rows }: { label: string; rows: Series[] }) {
               <div className="text-[10px] text-mute">{s.latestDate ?? ""}</div>
             </td>
             <td className="num font-semibold">{bp ? fmtNum(s.latest, 0) : fmtNum(s.latest, 2)}</td>
-            <td className={`num ${c(s.change1d)}`}>{d(s.change1d)}</td>
+            <td className={`num ${c(s.change1d)}`}>{s.freq === "w" ? "--" : d(s.change1d)}</td>
             <td className={`num ${c(s.change1w)}`}>{d(s.change1w)}</td>
             <td className={`num ${c(s.change1m)}`}>{d(s.change1m)}</td>
-            <td><Sparkline points={s.points.map((p) => p.v)} width={90} height={22} invert={inv} /></td>
+            <td>
+              <Sparkline
+                points={s.points.map((p) => p.v)}
+                width={90}
+                height={22}
+                invert={s.rising === "off"}
+                neutral={s.rising === "neutral"}
+                label={`${s.label}, 90 day trend`}
+              />
+            </td>
           </tr>
         );
       })}
@@ -188,7 +222,7 @@ function GroupRows({ label, rows }: { label: string; rows: Series[] }) {
   );
 }
 
-function Wire({ news, cat, setCat, filter, setFilter }: { news: NewsPayload | null; cat: Category | "all"; setCat: (c: Category | "all") => void; filter: string; setFilter: (s: string) => void }) {
+function Wire({ news, newsErr, cat, setCat, filter, setFilter }: { news: NewsPayload | null; newsErr: string | null; cat: Category | "all"; setCat: (c: Category | "all") => void; filter: string; setFilter: (s: string) => void }) {
   const items = useMemo(() => {
     if (!news) return [];
     let list = news.items;
@@ -205,7 +239,7 @@ function Wire({ news, cat, setCat, filter, setFilter }: { news: NewsPayload | nu
       id="news"
       title="Wire"
       className="h-full"
-      right={news ? `${items.length} stories · refreshed ${hhmm(news.fetchedAt)}` : "loading"}
+      right={news ? `${items.length} stories · refreshed ${hhmm(news.fetchedAt)}` : newsErr ? "error" : "loading"}
     >
       <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-line bg-panel px-2 py-1 flex-wrap">
         {(["all", ...CATEGORY_ORDER] as const).map((c) => (
@@ -217,12 +251,13 @@ function Wire({ news, cat, setCat, filter, setFilter }: { news: NewsPayload | nu
             {c === "all" ? "All" : CATEGORY_LABELS[c]}
           </button>
         ))}
-        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="filter" className="ml-auto h-5 w-36 text-[11px]" />
+        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="filter" aria-label="Filter headlines" className="ml-auto h-5 w-36 text-[11px]" />
       </div>
-      {!news && <div className="p-3 text-dim">Pulling feeds...</div>}
-      <ul>
+      {!news && !newsErr && <div className="p-3 text-dim">Pulling feeds...</div>}
+      {!news && newsErr && <Unavailable what="News feeds" detail={newsErr} />}
+      <ul aria-live="polite">
         {items.map((i) => (
-          <li key={i.id} className="row-hover border-b border-[#141414]">
+          <li key={i.id} className="row-hover border-b border-line-faint">
             <a href={i.link} target="_blank" rel="noreferrer" className="grid grid-cols-[44px_1fr] gap-2 px-2 py-1.5">
               <span className="text-mute text-[10px] pt-0.5" title={new Date(i.publishedAt).toLocaleString()}>{timeAgo(i.publishedAt)}</span>
               <span>
@@ -244,12 +279,14 @@ function Wire({ news, cat, setCat, filter, setFilter }: { news: NewsPayload | nu
 
 export function Board() {
   const { data: mk, err: mkErr } = usePoll<MarketBoard>("/api/markets", 60_000);
-  const { data: cr } = usePoll<CreditPayload>("/api/credit", 30 * 60_000);
-  const { data: news } = usePoll<NewsPayload>("/api/news", 3 * 60_000);
+  const { data: cr, err: crErr } = usePoll<CreditPayload>("/api/credit", 30 * 60_000);
+  const { data: news, err: newsErr } = usePoll<NewsPayload>("/api/news", 3 * 60_000);
   const [cat, setCat] = useState<Category | "all">("all");
   const [filter, setFilter] = useState("");
 
   const feedsDown = news?.status.filter((s) => !s.ok) ?? [];
+  const quotes = (rows: Quote[] | undefined, h: string, link?: boolean) =>
+    rows ? <QuoteRows rows={rows} link={link} /> : mkErr ? <Unavailable what="Yahoo Finance" detail={mkErr} /> : <div className={`${h} skeleton`} />;
 
   return (
     <div className="xl:h-full flex flex-col">
@@ -257,24 +294,22 @@ export function Board() {
       <div className="xl:flex-1 xl:min-h-0 grid gap-1 p-1 grid-cols-1 xl:grid-cols-[300px_1fr_440px] xl:grid-rows-[1fr]">
         {/* Left: equities and rates. The column scrolls; panels keep their natural height. */}
         <div className="flex flex-col gap-1 xl:min-h-0 xl:overflow-auto [&>.panel]:shrink-0">
-          <Panel title="Indices" right={mk ? mk.marketState : mkErr ? "error" : "loading"}>
-            {mk ? <QuoteRows rows={mk.indices} /> : <div className="h-28 skeleton" />}
-          </Panel>
-          <Panel title="Treasuries (CBOE yield)">{mk ? <QuoteRows rows={mk.rates} /> : <div className="h-20 skeleton" />}</Panel>
-          <Panel title="Credit ETFs">{mk ? <QuoteRows rows={mk.creditEtfs} link /> : <div className="h-28 skeleton" />}</Panel>
-          <Panel title="Risk & Macro">{mk ? <QuoteRows rows={mk.risk} /> : <div className="h-28 skeleton" />}</Panel>
-          <Panel title="Sectors (SPDR)">{mk ? <SectorHeat sectors={mk.sectors} /> : <div className="h-24 skeleton" />}</Panel>
+          <Panel title="Indices" right={mk ? mk.marketState : mkErr ? "error" : "loading"}>{quotes(mk?.indices, "h-28")}</Panel>
+          <Panel title="Treasuries (CBOE, live)" right="chg in bp">{quotes(mk?.rates, "h-20")}</Panel>
+          <Panel title="Credit ETFs">{quotes(mk?.creditEtfs, "h-28", true)}</Panel>
+          <Panel title="Risk & Macro">{quotes(mk?.risk, "h-28")}</Panel>
+          <Panel title="Sectors (SPDR)">{mk ? <SectorHeat sectors={mk.sectors} /> : mkErr ? <Unavailable what="Yahoo Finance" /> : <div className="h-24 skeleton" />}</Panel>
         </div>
 
         {/* Center: wire */}
         <div className="h-[70vh] xl:h-auto xl:min-h-0">
-          <Wire news={news} cat={cat} setCat={setCat} filter={filter} setFilter={setFilter} />
+          <Wire news={news} newsErr={newsErr} cat={cat} setCat={setCat} filter={filter} setFilter={setFilter} />
         </div>
 
         {/* Right: credit */}
         <div className="grid gap-1 xl:min-h-0 xl:grid-rows-[1fr_auto] xl:overflow-auto">
-          <Panel id="credit" title="Credit Monitor" right={cr ? `FRED · ${cr.fetchedAt.slice(0, 10)}` : "loading"}>
-            {cr ? <CreditRows series={cr.series} /> : <div className="h-64 skeleton" />}
+          <Panel id="credit" title="Credit Monitor" right={cr ? `FRED · latest obs ${cr.latestObs ?? "n/a"}` : crErr ? "error" : "loading"}>
+            {cr ? <CreditRows series={cr.series} /> : crErr ? <Unavailable what="FRED" detail={crErr} /> : <div className="h-64 skeleton" />}
           </Panel>
           <Panel title="Sources" right={news ? `${news.status.filter((s) => s.ok).length}/${news.status.length} live` : ""}>
             <div className="flex flex-wrap gap-1 p-2">
@@ -283,7 +318,11 @@ export function Board() {
                   {s.name}
                 </span>
               ))}
-              {feedsDown.length > 0 && <span className="text-[10px] text-down w-full">{feedsDown.length} feed(s) returned nothing this cycle.</span>}
+              {feedsDown.length > 0 && (
+                <span className="text-[10px] text-down w-full">
+                  {feedsDown.length === 1 ? "1 feed returned nothing." : `${feedsDown.length} feeds returned nothing.`}
+                </span>
+              )}
             </div>
           </Panel>
         </div>

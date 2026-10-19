@@ -29,7 +29,7 @@ export const FEEDS: Feed[] = [
   { id: "cnbc-markets", name: "CNBC Markets", url: "https://www.cnbc.com/id/10000664/device/rss/rss.html", category: "markets", weight: 3 },
   { id: "cnbc-finance", name: "CNBC Finance", url: "https://www.cnbc.com/id/10000113/device/rss/rss.html", category: "markets", weight: 2 },
   { id: "wsj-markets", name: "WSJ Markets", url: "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain", category: "markets", weight: 4 },
-  { id: "mw-top", name: "MarketWatch", url: "https://feeds.marketwatch.com/marketwatch/topstories/", category: "markets", weight: 2 },
+  { id: "mw-pulse", name: "MarketWatch", url: "https://feeds.marketwatch.com/marketwatch/marketpulse/", category: "markets", weight: 2 },
   { id: "ft-home", name: "Financial Times", url: "https://www.ft.com/rss/home", category: "markets", weight: 4 },
   { id: "sa-currents", name: "Seeking Alpha", url: "https://seekingalpha.com/market_currents.xml", category: "markets", weight: 1 },
 
@@ -45,8 +45,9 @@ export const FEEDS: Feed[] = [
 
   // Politics
   { id: "politico", name: "Politico", url: "https://rss.politico.com/politics-news.xml", category: "politics", weight: 3 },
-  { id: "thehill", name: "The Hill", url: "https://thehill.com/feed/", category: "politics", weight: 2 },
-  { id: "cnbc-politics", name: "CNBC Politics", url: "https://www.cnbc.com/id/10000113/device/rss/rss.html", category: "politics", weight: 1 },
+  // The Hill's firehose carries entertainment; its finance feed is empty (probed 2026-10-19).
+  // Kept at weight 1 with the filler filter in news.ts doing the cleanup.
+  { id: "thehill", name: "The Hill", url: "https://thehill.com/feed/", category: "politics", weight: 1 },
 
   // Regulatory
   { id: "sec-press", name: "SEC", url: "https://www.sec.gov/news/pressreleases.rss", category: "regulatory", weight: 4 },

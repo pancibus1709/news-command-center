@@ -37,7 +37,7 @@ export function CommandBar() {
   useEffect(() => {
     const ctl = new AbortController();
     const t = setTimeout(async () => {
-      if (q.trim().length < 1) {
+      if (q.trim().length < 2) {
         setHits([]);
         return;
       }
@@ -48,7 +48,7 @@ export function CommandBar() {
         setSel(0);
         setOpen(true);
       } catch {}
-    }, 180);
+    }, 300);
     return () => {
       clearTimeout(t);
       ctl.abort();
@@ -86,7 +86,7 @@ export function CommandBar() {
               else if (q.trim()) go(q.trim().toUpperCase());
             } else if (e.key === "Escape") setOpen(false);
           }}
-          placeholder="Ticker or company name  <GO>"
+          placeholder="Ticker or company name <GO>"
           className="w-full h-6 text-[12px] uppercase placeholder:normal-case placeholder:text-mute"
           spellCheck={false}
           autoComplete="off"

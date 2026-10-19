@@ -33,7 +33,7 @@ const INDICES: Def[] = [
 ];
 
 const RATES: Def[] = [
-  { symbol: "^IRX", label: "3M T-Bill", unit: "yield" },
+  { symbol: "^IRX", label: "13W Bill (disc.)", unit: "yield" }, // bank-discount quote, not the CMT yield
   { symbol: "^FVX", label: "5Y Treasury", unit: "yield" },
   { symbol: "^TNX", label: "10Y Treasury", unit: "yield" },
   { symbol: "^TYX", label: "30Y Treasury", unit: "yield" },

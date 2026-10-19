@@ -3,14 +3,21 @@ export const fmtNum = (v: number | null | undefined, d = 2): string =>
 
 export const fmtPct = (v: number | null | undefined, d = 2, sign = true): string => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "--";
-  const s = sign && v > 0 ? "+" : "";
-  return `${s}${v.toFixed(d)}%`;
+  const r = +v.toFixed(d);
+  const s = sign && r > 0 ? "+" : "";
+  return `${s}${r.toFixed(d)}%`;
 };
 
+/** Signed, rounded first so -0.004 renders as 0.00 and not -0.00. */
 export const fmtSigned = (v: number | null | undefined, d = 2): string => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "--";
-  return `${v > 0 ? "+" : ""}${v.toFixed(d)}`;
+  const r = +v.toFixed(d);
+  return `${r > 0 ? "+" : ""}${r.toFixed(d)}`;
 };
+
+/** Yield change in basis points: 0.033 (yield points) -> "+3.3bp". */
+export const fmtBp = (yieldDelta: number | null | undefined, d = 1): string =>
+  yieldDelta === null || yieldDelta === undefined || !Number.isFinite(yieldDelta) ? "--" : `${fmtSigned(yieldDelta * 100, d)}bp`;
 
 /** Compact money: 1.23T, 456.7B, 12.3M. */
 export const fmtMoney = (v: number | null | undefined, currency = "USD"): string => {
@@ -42,5 +49,6 @@ export const timeAgo = (iso: string): string => {
   return `${Math.floor(s / 86400)}d`;
 };
 
+/** One clock for the whole app: New York time, 24h. */
 export const hhmm = (iso: string): string =>
-  new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" }) + " ET";
