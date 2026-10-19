@@ -30,8 +30,10 @@ export function Sparkline({
 }
 
 /** Larger chart with axis labels, used on the company page. */
-export function LineChart({ data, height = 220 }: { data: { d: string; c: number }[]; height?: number }) {
+export function LineChart({ data, height = 300 }: { data: { d: string; c: number }[]; height?: number }) {
   if (data.length < 2) return <div className="text-mute p-4">No price history</div>;
+  // Scales uniformly with its container (no preserveAspectRatio="none"), so
+  // axis text keeps its proportions on narrow screens.
   const width = 1000;
   const padL = 56;
   const padB = 22;
@@ -50,7 +52,7 @@ export function LineChart({ data, height = 220 }: { data: { d: string; c: number
   const yTicks = Array.from({ length: ticks + 1 }, (_, i) => min + (span * i) / ticks);
   const xIdx = [0, Math.floor(data.length / 4), Math.floor(data.length / 2), Math.floor((3 * data.length) / 4), data.length - 1];
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="none" style={{ height }}>
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto block">
       <defs>
         <linearGradient id="fill" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor={stroke} stopOpacity="0.25" />
@@ -60,18 +62,18 @@ export function LineChart({ data, height = 220 }: { data: { d: string; c: number
       {yTicks.map((t) => (
         <g key={t}>
           <line x1={padL} x2={width - 8} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeDasharray="2 4" />
-          <text x={padL - 6} y={y(t) + 4} fill="var(--fg-dim)" fontSize="11" textAnchor="end">
+          <text x={padL - 6} y={y(t) + 4} fill="var(--fg-dim)" fontSize="14" textAnchor="end">
             {t.toFixed(t > 100 ? 0 : 2)}
           </text>
         </g>
       ))}
       {xIdx.map((i) => (
-        <text key={i} x={x(i)} y={height - 6} fill="var(--fg-dim)" fontSize="11" textAnchor={i === 0 ? "start" : i === data.length - 1 ? "end" : "middle"}>
+        <text key={i} x={x(i)} y={height - 6} fill="var(--fg-dim)" fontSize="14" textAnchor={i === 0 ? "start" : i === data.length - 1 ? "end" : "middle"}>
           {data[i].d.slice(0, 7)}
         </text>
       ))}
       <path d={area} fill="url(#fill)" />
-      <path d={path} fill="none" stroke={stroke} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      <path d={path} fill="none" stroke={stroke} strokeWidth={2} vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
