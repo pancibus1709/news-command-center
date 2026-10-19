@@ -297,10 +297,10 @@ export default async function CompanyPage({ params }: { params: Promise<{ ticker
                   {c.bonds.map((b) => (
                     <tr key={b.cusip} title={`CUSIP ${b.cusip} · ${b.symbol}${b.is144A ? " · 144A" : ""} · last trade ${b.lastTrade ?? "--"} · FINRA TRACE`}>
                       <td className="px-0 py-0 border-0">{b.coupon === null ? "--" : `${b.coupon.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}%`}{b.floating && <span className="text-mute"> FRN</span>}</td>
-                      <td className="px-0 py-0 border-0 text-dim">{b.maturity}</td>
+                      <td className="px-0 py-0 border-0 text-dim whitespace-nowrap">{b.maturity}</td>
                       <td className="num px-0 py-0 border-0 font-semibold">{fmtNum(b.price)}</td>
                       <td className={`num px-0 py-0 border-0 ${b.ytm !== null && b.ytm >= 8 ? "down" : ""}`}>{b.ytm === null ? "--" : fmtPct(b.ytm, 2, false)}</td>
-                      <td className="num px-0 py-0 border-0 text-dim">{b.moodys ?? "--"} / {b.sp ?? "--"}</td>
+                      <td className="num px-0 py-0 border-0 text-dim whitespace-nowrap">{b.moodys ?? "--"} / {b.sp ?? "--"}</td>
                     </tr>
                   ))}
                 </tbody>
