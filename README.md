@@ -2,7 +2,7 @@
 
 A terminal-style board for credit and equity work. One screen for markets, credit spreads, and seven news wires; one page per company that pulls price, valuation, operating and credit metrics, street estimates, SEC filings, five years of audited fundamentals, and the latest headlines.
 
-Everything comes from public sources with no API keys: Yahoo Finance (quotes, TTM financials, estimates), FRED (ICE BofA OAS spreads, Treasury curve, policy rates), SEC EDGAR (filings and XBRL company facts), and 23 RSS and Google News wires (CNBC, WSJ, FT, MarketWatch, Federal Reserve, SEC, Politico, The Hill, TechCrunch, plus keyword wires for credit, distressed, ratings, macro, regulatory and AI).
+Everything comes from public sources with no API keys: Yahoo Finance (quotes, TTM financials, estimates), FRED (ICE BofA OAS spreads, Treasury curve, policy rates), SEC EDGAR (filings, XBRL company facts, and full-text search for rating statements), FINRA TRACE reference data (outstanding bonds with last price, yield, and bond-level Moody's and S&P grades), and 23 RSS and Google News wires (CNBC, WSJ, FT, MarketWatch, Federal Reserve, SEC, Politico, The Hill, TechCrunch, plus keyword wires for credit, distressed, ratings, macro, regulatory and AI).
 
 ## Run
 
@@ -22,5 +22,7 @@ Copy `.env.example` to `.env.local` and set `SEC_USER_AGENT` to your name and em
 API routes under `src/app/api/` expose the same data as JSON: `/api/news`, `/api/markets`, `/api/credit`, `/api/company/[ticker]`, `/api/search?q=`.
 
 ## Known limits
+
+Agency ratings are read from two public places and merged: FINRA's bond-level Moody's and S&P grades across recently traded senior issues, and the grade the issuer states in its own 10-K, 10-Q or 8-K text (which is also the only public source for Fitch and for outlooks). Investment-grade industrials rarely state a grade in filings, so Apple shows FINRA's bond-level grade with no outlook. When a later filing reports an upgrade or downgrade without the new grade, the row says so rather than letting a stale grade stand. The Moody's and S&P Global connectors would give issuer-level ratings directly but need OAuth authorization; the old FINRA Bond Center on finra-markets.morningstar.com is gone (it redirects to finra.org) and was dropped after a live probe on 2026-10-19.
 
 Yahoo Finance is unofficial and can rate-limit. Google News wires are keyword searches, so they catch noise. XBRL facts cover US registrants only; foreign filers show filings but no annual table. Nothing here is investment advice.
