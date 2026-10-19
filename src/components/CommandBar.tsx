@@ -66,12 +66,12 @@ export function CommandBar() {
       <Link href="/" className="text-amber font-bold tracking-widest text-[13px] whitespace-nowrap">
         NCC<span className="text-dim font-normal">/TERMINAL</span>
       </Link>
-      <nav className="flex gap-4 text-[11px] text-dim uppercase tracking-wider">
+      <nav className="hidden sm:flex gap-4 text-[11px] text-dim uppercase tracking-wider">
         <Link href="/" className="hover:text-fg">Board</Link>
         <Link href="/#credit" className="hover:text-fg">Credit</Link>
         <Link href="/#news" className="hover:text-fg">Wire</Link>
       </nav>
-      <div className="relative flex-1 max-w-xl">
+      <div className="relative flex-1 min-w-[140px] max-w-xl">
         <input
           ref={ref}
           value={q}
@@ -110,7 +110,7 @@ export function CommandBar() {
       <span className="text-[10px] text-mute hidden md:inline">
         <span className="kbd">/</span> search
       </span>
-      <span className="ml-auto text-[11px] text-dim whitespace-nowrap" suppressHydrationWarning>{clock}</span>
+      <span className="ml-auto text-[11px] text-dim whitespace-nowrap hidden sm:inline" suppressHydrationWarning>{clock}</span>
     </header>
   );
 }
