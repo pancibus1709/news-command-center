@@ -27,9 +27,9 @@ const INDICES: Def[] = [
   { symbol: "^GSPC", label: "S&P 500" },
   { symbol: "^DJI", label: "Dow" },
   { symbol: "^IXIC", label: "Nasdaq" },
-  { symbol: "^RUT", label: "Russell 2000" },
-  { symbol: "^STOXX50E", label: "Euro Stoxx 50" },
-  { symbol: "^N225", label: "Nikkei 225" },
+  { symbol: "^RUT", label: "Russell 2K" },
+  { symbol: "^STOXX50E", label: "Stoxx 50" },
+  { symbol: "^N225", label: "Nikkei" },
 ];
 
 const RATES: Def[] = [
@@ -40,12 +40,12 @@ const RATES: Def[] = [
 ];
 
 const CREDIT: Def[] = [
-  { symbol: "HYG", label: "HY Corp (HYG)" },
-  { symbol: "JNK", label: "HY Corp (JNK)" },
-  { symbol: "LQD", label: "IG Corp (LQD)" },
-  { symbol: "BKLN", label: "Lev Loans (BKLN)" },
-  { symbol: "EMB", label: "EM Debt (EMB)" },
-  { symbol: "TLT", label: "20Y+ Tsy (TLT)" },
+  { symbol: "HYG", label: "HYG HY Corp" },
+  { symbol: "JNK", label: "JNK HY Corp" },
+  { symbol: "LQD", label: "LQD IG Corp" },
+  { symbol: "BKLN", label: "BKLN Loans" },
+  { symbol: "EMB", label: "EMB EM Debt" },
+  { symbol: "TLT", label: "TLT 20Y+ Tsy" },
 ];
 
 const RISK: Def[] = [
@@ -58,6 +58,7 @@ const RISK: Def[] = [
 ];
 
 const SECTORS: Def[] = [
+  { symbol: "SPY", label: "S&P (SPY)" }, // benchmark cell, so the 4x3 grid reads against the index
   { symbol: "XLK", label: "Tech" },
   { symbol: "XLF", label: "Financials" },
   { symbol: "XLE", label: "Energy" },

@@ -57,7 +57,7 @@ function QuoteRows({ rows, link }: { rows: Quote[]; link?: boolean }) {
           const cls = dirClass(q.changePct);
           const inner = (
             <>
-              <td className="text-fg w-[46%]">{q.label}</td>
+              <td className="text-fg w-[42%] whitespace-nowrap overflow-hidden text-ellipsis max-w-0" title={q.label}>{q.label}</td>
               <td className="num">{q.unit === "yield" ? fmtNum(q.price, 3) : fmtNum(q.price, q.price !== null && q.price < 10 ? 4 : 2)}</td>
               <td className={`num ${cls}`}>{q.unit === "yield" ? fmtSigned(q.change, 3) : fmtSigned(q.change)}</td>
               <td className={`num ${cls} w-16`}>{fmtPct(q.changePct)}</td>
@@ -86,7 +86,7 @@ function Panel({ title, right, children, id, className = "" }: { title: string; 
   return (
     <section id={id} className={`panel ${className}`}>
       <div className="panel-head">
-        <span>{title}</span>
+        <h2 className="text-inherit font-inherit">{title}</h2>
         {right && <span className="text-dim font-normal normal-case tracking-normal text-[10px]">{right}</span>}
       </div>
       <div className="panel-body">{children}</div>
@@ -255,8 +255,8 @@ export function Board() {
     <div className="xl:h-full flex flex-col">
       <Tape board={mk} />
       <div className="xl:flex-1 xl:min-h-0 grid gap-1 p-1 grid-cols-1 xl:grid-cols-[300px_1fr_440px] xl:grid-rows-[1fr]">
-        {/* Left: equities and rates */}
-        <div className="grid gap-1 xl:min-h-0 xl:grid-rows-[auto_auto_auto_auto_1fr] xl:overflow-auto">
+        {/* Left: equities and rates. The column scrolls; panels keep their natural height. */}
+        <div className="flex flex-col gap-1 xl:min-h-0 xl:overflow-auto [&>.panel]:shrink-0">
           <Panel title="Indices" right={mk ? mk.marketState : mkErr ? "error" : "loading"}>
             {mk ? <QuoteRows rows={mk.indices} /> : <div className="h-28 skeleton" />}
           </Panel>
