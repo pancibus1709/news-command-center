@@ -98,6 +98,11 @@ a { color: inherit; text-decoration: none; }
 }
 .tape:hover { animation-play-state: paused; }
 @keyframes tape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .tape { animation: none; overflow-x: auto; }
+  .blink { animation: none; }
+  .skeleton { animation: none; }
+}
 
 .kbd {
   border: 1px solid var(--line-strong);
