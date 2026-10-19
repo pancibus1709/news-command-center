@@ -13,6 +13,14 @@ function Stat({ label, value, cls = "", hint }: { label: string; value: string; 
   );
 }
 
+/** Investment grade reads neutral, high yield amber, distressed red. */
+function ratingClass(r: string | null): string {
+  if (!r) return "text-dim";
+  if (/^(Aaa|Aa|A|Baa|AAA|AA|A|BBB)/.test(r)) return "";
+  if (/^(Caa|Ca|C|CCC|CC|C|D)/.test(r)) return "down";
+  return "text-amber";
+}
+
 function Panel({ title, right, children, className = "" }: { title: string; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
     <section className={`panel ${className}`}>
@@ -205,7 +213,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ ticker
         </Panel>
 
         {/* Credit */}
-        <Panel title="Credit Profile" right={c.isFinancial ? "bank / insurer view" : "Yahoo + SEC XBRL"}>
+        <Panel title="Credit Profile" right={c.isFinancial ? "bank / insurer view · FINRA TRACE" : "Yahoo + SEC XBRL + FINRA TRACE"}>
           {c.isFinancial ? (
             <>
               <Stat label="LT debt (10-K)" value={latestDebt ? `${fmtMoney(latestDebt.value, cur)} FY${latestDebt.fy}` : "--"} hint="Long-term debt from the latest 10-K, SEC XBRL" />
@@ -250,6 +258,55 @@ export default async function CompanyPage({ params }: { params: Promise<{ ticker
               </div>
             </div>
           )}
+          <div className="px-2 py-1 border-b border-line-faint">
+            <div className="text-dim mb-1" title="Issuer-level grade. FINRA TRACE reference data carries Moody's and S&P grades per bond; the modal grade across recently traded senior issues is shown. Outlooks and Fitch come from the issuer's own 10-K, 10-Q and 8-K text on EDGAR.">Ratings</div>
+            {c.ratings.length === 0 && <div className="text-dim text-[11px]" title={c.ratingsNote ?? undefined}>no public ratings found</div>}
+            {c.ratings.map((r) => (
+              <div key={r.agency} className="flex justify-between gap-3 text-[11px]" title={`${r.source}${r.asOf ? `, as of ${r.asOf}` : ""}${r.note ? `. ${r.note}` : ""}`}>
+                <span className="text-dim shrink-0">{r.agency}</span>
+                <span className="text-right">
+                  <span className={`font-semibold ${ratingClass(r.rating)}`}>{r.rating ?? "n/a"}</span>
+                  {r.outlook && <span className="text-dim"> · {r.outlook.toLowerCase()}</span>}
+                  {r.url ? (
+                    <a href={r.url} target="_blank" rel="noreferrer" className="text-mute hover:text-amber"> · {r.source.startsWith("SEC") ? r.source.replace(/^SEC /, "").replace(/ filed .*/, "") : "TRACE"} {r.asOf ?? ""}</a>
+                  ) : (
+                    <span className="text-mute"> · TRACE {r.asOf ?? ""}</span>
+                  )}
+                  {r.note && <span className="block text-amber-dim text-[10px]">{r.note}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="px-2 py-1 border-b border-line-faint">
+            <div className="text-dim mb-1" title="Senior corporate bonds that printed on TRACE in the last 90 days, sorted by maturity. Price per 100 and yield to maturity from the latest trade. Floating-rate notes carry no TRACE yield.">
+              Bonds (FINRA TRACE){c.bonds.length > 0 && <span className="text-mute"> · last trade {c.bonds.reduce((m, b) => (b.lastTrade && b.lastTrade > m ? b.lastTrade : m), "")}</span>}
+            </div>
+            {c.bonds.length === 0 && <div className="text-dim text-[11px]" title={c.bondsNote ?? undefined}>{c.bondsNote ?? "no TRACE-reported bonds"}</div>}
+            {c.bonds.length > 0 && (
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-mute text-[10px]">
+                    <th className="text-left font-normal px-0 py-0">Coupon</th>
+                    <th className="text-left font-normal px-0 py-0">Maturity</th>
+                    <th className="num font-normal px-0 py-0">Px</th>
+                    <th className="num font-normal px-0 py-0">YTM</th>
+                    <th className="num font-normal px-0 py-0">Mdy / S&P</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {c.bonds.map((b) => (
+                    <tr key={b.cusip} title={`CUSIP ${b.cusip} · ${b.symbol}${b.is144A ? " · 144A" : ""} · last trade ${b.lastTrade ?? "--"} · FINRA TRACE`}>
+                      <td className="px-0 py-0 border-0">{b.coupon === null ? "--" : `${b.coupon.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}%`}{b.floating && <span className="text-mute"> FRN</span>}</td>
+                      <td className="px-0 py-0 border-0 text-dim">{b.maturity}</td>
+                      <td className="num px-0 py-0 border-0 font-semibold">{fmtNum(b.price)}</td>
+                      <td className={`num px-0 py-0 border-0 ${b.ytm !== null && b.ytm >= 8 ? "down" : ""}`}>{b.ytm === null ? "--" : fmtPct(b.ytm, 2, false)}</td>
+                      <td className="num px-0 py-0 border-0 text-dim">{b.moodys ?? "--"} / {b.sp ?? "--"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
           {c.debtFilings.length > 0 && (
             <div className="px-2 py-1" title="424B2, 424B5, FWP and S-3 filings: note offerings and shelf registrations">
               <div className="text-dim mb-1">Debt & shelf filings</div>

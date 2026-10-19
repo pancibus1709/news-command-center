@@ -248,3 +248,133 @@ export async function getFundamentals(cik: string): Promise<Fundamentals> {
     return out;
   });
 }
+
+// ---------------------------------------------------------------------------
+// Agency ratings as the issuer states them in its own filings. Banks print a
+// ratings table in every 10-K and 10-Q; most industrials only mention a grade
+// in an 8-K press release when it changes. EDGAR full-text search finds the
+// newest filings that name an agency, the documents are fetched and stripped
+// to text, and a grade is read only when it sits within a short window after
+// the agency's name. Credit-agreement exhibits (EX-10, EX-4) are skipped: they
+// list every grade on the pricing grid, not the issuer's own rating.
+
+export type Agency = "Moody's" | "S&P" | "Fitch";
+
+export type FilingRating = {
+  agency: Agency;
+  rating: string | null; // null when a filing mentions an action but not the grade
+  outlook: string | null;
+  action: "upgrade" | "downgrade" | "investment grade" | null;
+  filed: string;
+  form: string;
+  url: string;
+};
+
+type FtsHit = {
+  _id: string;
+  _source: { file_date: string; form: string; file_type: string; adsh: string; ciks: string[] };
+};
+
+const AGENCY_RX: Record<Agency, RegExp> = {
+  "Moody's": /Moody[’']s(?: Investors Service| Ratings)?/g,
+  "S&P": /S&P(?: Global)?(?: Ratings)?|Standard\s*&\s*Poor[’']s/g,
+  Fitch: /Fitch(?: Ratings)?/g,
+};
+// A grade must be followed by whitespace or punctuation, never a digit (A-1 is
+// a short-term rating) and never a lowercase word ("A rating is not...").
+// Single-letter grades (S&P "A", Moody's "C") also have to avoid reading the
+// article in "A rating is not a recommendation" as a grade.
+const END = "(?=[\\s,.;:)])";
+const MOODYS_GRADE = new RegExp(`\\b(?:(Aaa|Aa[1-3]|A[1-3]|Baa[1-3]|Ba[1-3]|B[1-3]|Caa[1-3]|Ca)${END}|(C)${END}(?!\\s?[a-z]))`);
+const SP_GRADE = new RegExp(`\\b(?:(AAA|AA[+-]?|A[+-]|BBB[+-]?|BB[+-]?|B[+-]|CCC[+-]?|CC)${END}|([ABCD])${END}(?!\\s?[a-z]))`);
+const OUTLOOK = /\b(stable|positive|negative|developing)\b/i;
+const ACTION = /upgrad|downgrad|investment grade/i;
+const actionWord = (m: string): FilingRating["action"] => (/^upgrad/i.test(m) ? "upgrade" : /^downgrad/i.test(m) ? "downgrade" : "investment grade");
+const INDEX = /^\s*(500|Financials|Index|Composite|MidCap|SmallCap|Dow|Global Market)/;
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&#8217;|&rsquo;/g, "’")
+    .replace(/&[a-z]+;|&#\d+;/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+const cap = (w: string | undefined): string | null => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : null);
+
+function scanRatings(text: string, hit: FtsHit, url: string): FilingRating[] {
+  const out: FilingRating[] = [];
+  for (const agency of Object.keys(AGENCY_RX) as Agency[]) {
+    const rx = new RegExp(AGENCY_RX[agency].source, "g");
+    let m: RegExpExecArray | null;
+    let found = false;
+    while ((m = rx.exec(text)) && out.length < 30) {
+      const after = text.slice(m.index + m[0].length, m.index + m[0].length + 140);
+      if (INDEX.test(after)) continue;
+      const g = (agency === "Moody's" ? MOODYS_GRADE : SP_GRADE).exec(after);
+      // The grade has to belong to this sentence and this agency.
+      const grade = g && !/[.;]/.test(after.slice(0, g.index)) && !/Moody|S&P|Standard|Fitch/.test(after.slice(0, g.index)) ? g : null;
+      const around = text.slice(Math.max(0, m.index - 120), m.index + m[0].length + 160);
+      const action = ACTION.exec(around);
+      if (grade) {
+        const o = OUTLOOK.exec(after.slice(grade.index + grade[0].length, grade.index + grade[0].length + 90));
+        out.push({ agency, rating: grade[1] ?? grade[2], outlook: cap(o?.[1]), action: action ? actionWord(action[0]) : null, filed: hit._source.file_date, form: hit._source.form, url });
+        found = true;
+        break; // first grade in the newest filing is the issuer-level one
+      }
+      if (action && !found) {
+        const o = OUTLOOK.exec(around);
+        out.push({ agency, rating: null, outlook: cap(o?.[1]), action: actionWord(action[0]), filed: hit._source.file_date, form: hit._source.form, url });
+        found = true;
+      }
+    }
+  }
+  return out;
+}
+
+const SKIP_EXHIBIT = /^EX-(10|4)/;
+const MAX_DOC_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Rating statements from the six newest 10-K, 10-Q and 8-K documents of
+ * the last two years that name an agency. Prospectus supplements are left
+ * out: frequent issuers file hundreds that only cite the S&P 500. Empty when the issuer never states a grade, which
+ * is the norm for non-financial investment-grade names.
+ */
+export async function getFilingRatings(cik: string): Promise<FilingRating[]> {
+  return cached(`sec:ratings:${cik}`, 12 * HOUR, async () => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 2 * 365 * 864e5);
+    const q = encodeURIComponent(`Moody's OR Fitch OR S&P OR "Standard & Poor's"`);
+    const url =
+      `https://efts.sec.gov/LATEST/search-index?q=${q}&dateRange=custom` +
+      `&startdt=${start.toISOString().slice(0, 10)}&enddt=${end.toISOString().slice(0, 10)}` +
+      `&ciks=${cik}&forms=10-K,10-Q,8-K`;
+    const res = await secJson<{ hits: { hits: FtsHit[] } }>(url);
+    if (!res) return [];
+    const docs = res.hits.hits
+      .filter((h) => !SKIP_EXHIBIT.test(h._source.file_type))
+      .sort((a, b) => (a._source.file_date < b._source.file_date ? 1 : -1))
+      .slice(0, 6);
+
+    const results = await Promise.all(
+      docs.map(async (h) => {
+        const [adsh, file] = h._id.split(":");
+        const docUrl = `https://www.sec.gov/Archives/edgar/data/${parseInt(cik, 10)}/${adsh.replace(/-/g, "")}/${file}`;
+        try {
+          const r = await fetch(docUrl, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20_000) });
+          if (!r.ok) return [];
+          const len = Number(r.headers.get("content-length") ?? 0);
+          if (len > MAX_DOC_BYTES) return [];
+          return scanRatings(htmlToText(await r.text()), h, docUrl);
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return results.flat();
+  });
+}

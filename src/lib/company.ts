@@ -1,7 +1,20 @@
 import { yf } from "./yahoo";
 import { cached, MINUTE } from "./cache";
 import { getCompanyNews, type NewsItem } from "./news";
-import { DEBT_FORMS, EMPTY_FUNDAMENTALS, getFilings, getFundamentals, tickerToCik, type Filing, type Fundamentals } from "./sec";
+import { DEBT_FORMS, EMPTY_FUNDAMENTALS, getFilings, getFilingRatings, getFundamentals, tickerToCik, type Agency, type Filing, type FilingRating, type Fundamentals } from "./sec";
+import { getFinraCredit, type Bond, type FinraCredit } from "./finra";
+
+export type Rating = {
+  agency: Agency;
+  /** null when a filing reports an action (upgrade, downgrade) without the grade. */
+  rating: string | null;
+  outlook: string | null;
+  asOf: string | null;
+  source: string;
+  url: string | null;
+  /** A later filing that mentions an action after asOf without a grade, or a disagreement between sources. */
+  note: string | null;
+};
 
 export type CompanyProfile = {
   ticker: string;
@@ -62,6 +75,12 @@ export type CompanyProfile = {
   fcfFY: { value: number; fy: number } | null; // OCF - capex
   debtFilings: Filing[]; // 424B2/424B5/FWP/S-3
 
+  // Credit (FINRA TRACE reference data + rating statements in SEC filings)
+  ratings: Rating[];
+  ratingsNote: string | null; // set when ratings is empty: which source came up dry
+  bonds: Bond[];
+  bondsNote: string | null; // set when bonds is empty
+
   // Street
   recommendation: string | null;
   targetMean: number | null;
@@ -120,6 +139,76 @@ export async function searchSymbols(q: string) {
   });
 }
 
+const AGENCIES: Agency[] = ["Moody's", "S&P", "Fitch"];
+const actionPhrase = (a: NonNullable<FilingRating["action"]>) => (a === "upgrade" ? "an upgrade" : a === "downgrade" ? "a downgrade" : "a move to investment grade");
+const daysBetween = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 864e5;
+
+/**
+ * One row per agency. FINRA's bond-level grade and the issuer's own filing
+ * statement are both evidence; the newer one wins, the other is kept as a
+ * note when they disagree. A filing that reports an upgrade or downgrade
+ * well after the chosen date, without a grade, is surfaced rather than
+ * silently letting a stale grade stand.
+ */
+function mergeRatings(finra: FinraCredit, filings: FilingRating[]): Rating[] {
+  const out: Rating[] = [];
+  for (const agency of AGENCIES) {
+    const bond = agency === "Moody's" ? finra.moodys : agency === "S&P" ? finra.sp : null;
+    const stated = filings.filter((f) => f.agency === agency).sort((a, b) => (a.filed < b.filed ? 1 : -1));
+    const graded = stated.find((f) => f.rating);
+
+    let row: Rating | null = null;
+    if (bond) {
+      row = {
+        agency,
+        rating: bond.rating,
+        outlook: null,
+        asOf: bond.asOf,
+        source: `FINRA TRACE, bond-level grade on ${bond.issues} senior issue${bond.issues === 1 ? "" : "s"}`,
+        url: null,
+        note: null,
+      };
+    }
+    if (graded) {
+      const fromFiling: Rating = {
+        agency,
+        rating: graded.rating,
+        outlook: graded.outlook,
+        asOf: graded.filed,
+        source: `SEC ${graded.form} filed ${graded.filed}`,
+        url: graded.url,
+        note: null,
+      };
+      if (!row) row = fromFiling;
+      else if (row.rating === graded.rating) {
+        row.outlook = graded.outlook;
+        row.source += `; ${fromFiling.source}`;
+        row.url = graded.url;
+        if (graded.filed > (row.asOf ?? "")) row.asOf = graded.filed;
+      } else if (graded.filed > (row.asOf ?? "")) {
+        fromFiling.note = `FINRA bond-level grade is ${row.rating}${row.asOf ? ` as of ${row.asOf}` : ""}`;
+        row = fromFiling;
+      } else {
+        row.note = `${graded.form} filed ${graded.filed} stated ${graded.rating}${graded.outlook ? ` ${graded.outlook.toLowerCase()}` : ""}`;
+      }
+    }
+    // A press release that names the outlook but not the grade still tells
+    // the reader which way the agency leans, if it is recent.
+    const outlook = stated.find((f) => f.outlook);
+    if (row && !row.outlook && outlook && daysBetween(outlook.filed, row.asOf ?? outlook.filed) < 400) {
+      row.outlook = outlook.outlook;
+      row.source += `; outlook from ${outlook.form} filed ${outlook.filed}`;
+      row.url ??= outlook.url;
+    }
+    // An action reported long after the grade we show means the grade moved.
+    const later = stated.find((f) => !f.rating && f.action && (!row?.asOf || (f.filed > row.asOf && daysBetween(f.filed, row.asOf) > 100)));
+    if (row && later) row.note = [row.note, `${later.form} filed ${later.filed} reports ${actionPhrase(later.action!)} without stating the new grade`].filter(Boolean).join(". ");
+    if (!row && later) row = { agency, rating: null, outlook: later.outlook, asOf: later.filed, source: `SEC ${later.form} filed ${later.filed}`, url: later.url, note: `Reports ${actionPhrase(later.action!)}; the grade itself is not stated` };
+    if (row) out.push(row);
+  }
+  return out;
+}
+
 /**
  * Returns null only when the symbol does not exist. Upstream failures throw
  * UpstreamError so the cache does not pin an outage for five minutes.
@@ -157,17 +246,23 @@ export async function getCompany(tickerRaw: string): Promise<CompanyProfile | nu
     const ks = summary.defaultKeyStatistics;
     const name = p.longName ?? p.shortName ?? ticker;
 
-    const [chart, cik, news] = await Promise.all([
+    const [chart, cik, news, finra] = await Promise.all([
       yf.chart(ticker, { period1: new Date(Date.now() - 370 * 864e5), interval: "1d" }).catch(() => null),
       tickerToCik(ticker),
       getCompanyNews(name).catch(() => [] as NewsItem[]),
+      getFinraCredit(ticker, name).catch((): FinraCredit => ({ issuer: null, bonds: [], moodys: null, sp: null, note: "FINRA TRACE did not respond" })),
     ]);
     if (!chart) warnings.push("Price history unavailable");
     if (!cik) warnings.push("No SEC EDGAR match (foreign or non-registrant)");
 
-    const [sub, fundamentals] = cik
-      ? await Promise.all([getFilings(cik), getFundamentals(cik)])
-      : [{ meta: {} as { sic?: string; sicDescription?: string; stateOfIncorporation?: string; fiscalYearEnd?: string }, filings: [] as Filing[] }, EMPTY_FUNDAMENTALS];
+    const [sub, fundamentals, filingRatings] = cik
+      ? await Promise.all([getFilings(cik), getFundamentals(cik), getFilingRatings(cik).catch(() => [] as FilingRating[])])
+      : [{ meta: {} as { sic?: string; sicDescription?: string; stateOfIncorporation?: string; fiscalYearEnd?: string }, filings: [] as Filing[] }, EMPTY_FUNDAMENTALS, [] as FilingRating[]];
+
+    const ratings = mergeRatings(finra, filingRatings);
+    const ratingsNote = ratings.length
+      ? null
+      : [finra.note ?? `No agency grade on ${finra.issuer ?? "this issuer"}'s bonds in FINRA TRACE reference data`, cik ? "no grade stated in SEC filings from the last two years" : "no EDGAR filings to scan"].join("; ");
 
     const isFinancial = prof?.sector === "Financial Services" || financialBySic(sub.meta.sic);
 
@@ -270,6 +365,10 @@ export async function getCompany(tickerRaw: string): Promise<CompanyProfile | nu
       interestCoverage,
       fcfFY,
       debtFilings: sub.filings.filter((f) => DEBT_FORMS.has(f.form)).slice(0, 8),
+      ratings,
+      ratingsNote,
+      bonds: finra.bonds,
+      bondsNote: finra.bonds.length ? null : (finra.note ?? "No TRACE-reported bonds"),
 
       recommendation: fin?.recommendationKey ?? null,
       targetMean: num(fin?.targetMeanPrice),
