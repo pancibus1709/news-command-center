@@ -17,7 +17,7 @@ function Panel({ title, right, children, className = "" }: { title: string; righ
   return (
     <section className={`panel ${className}`}>
       <div className="panel-head">
-        <span>{title}</span>
+        <h2 className="text-inherit font-inherit">{title}</h2>
         {right && <span className="text-dim font-normal normal-case tracking-normal text-[10px]">{right}</span>}
       </div>
       <div className="panel-body">{children}</div>
@@ -102,7 +102,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ ticker
       <section className="panel">
         <div className="flex flex-wrap items-end gap-x-6 gap-y-2 px-3 py-2">
           <div>
-            <div className="text-amber text-2xl font-bold tracking-wide leading-none">{c.ticker}</div>
+            <h1 className="text-amber text-2xl font-bold tracking-wide leading-none">{c.ticker}</h1>
             <div className="text-fg mt-1">{c.name}</div>
             <div className="text-dim text-[10px] uppercase tracking-wider mt-0.5">
               {[c.exchange, c.sector, c.industry].filter(Boolean).join(" · ")}
@@ -129,7 +129,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ ticker
       <div className="grid gap-1 grid-cols-1 lg:grid-cols-3 xl:grid-cols-4">
         {/* Chart */}
         <Panel title="1Y Price" className="lg:col-span-2 xl:col-span-2" right={c.history.length ? `${c.history[0].d} to ${c.history[c.history.length - 1].d}` : ""}>
-          <LineChart data={c.history} height={240} />
+          <LineChart data={c.history} />
           <div className="flex justify-between px-3 pb-2 text-[10px] text-dim">
             <span>52W {fmtNum(c.week52Low)} - {fmtNum(c.week52High)}</span>
             <span>{range !== null ? `${range.toFixed(0)}% of 52W range` : ""}</span>
