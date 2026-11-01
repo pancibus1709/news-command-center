@@ -5,10 +5,10 @@ import type { MarketBoard, Quote } from "@/lib/markets";
 import type { Series } from "@/lib/credit";
 import type { NewsItem, FeedStatus } from "@/lib/news";
 import { CATEGORY_LABELS, CATEGORY_ORDER, type Category } from "@/lib/feeds";
-import { dirClass, fmtBp, fmtNum, fmtPct, fmtSigned, hhmm, timeAgo } from "@/lib/format";
+import { dirClass, fmtBp, fmtNum, fmtPct, fmtSigned, freshness, hhmm, timeAgo } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
 
-type NewsPayload = { items: NewsItem[]; status: FeedStatus[]; fetchedAt: string };
+type NewsPayload = { items: NewsItem[]; status: FeedStatus[]; fetchedAt: string; sort: "ranked" | "latest" };
 type CreditPayload = { series: Series[]; fetchedAt: string; latestObs: string | null };
 
 function usePoll<T>(url: string, ms: number) {
@@ -65,7 +65,7 @@ function QuoteRows({ rows, link }: { rows: Quote[]; link?: boolean }) {
               <td className="text-fg w-[42%] whitespace-nowrap overflow-hidden text-ellipsis max-w-0" title={q.label}>{q.label}</td>
               <td className="num">{isYield ? `${fmtNum(q.price, 3)}%` : fmtNum(q.price, priceDecimals(q))}</td>
               <td className={`num ${cls}`}>{isYield ? fmtBp(q.change) : fmtSigned(q.change, priceDecimals(q))}</td>
-              <td className={`num ${cls} w-16`}>{isYield ? "" : fmtPct(q.changePct)}</td>
+              <td className={`num ${cls} w-16`} title={q.asOf ? `As of ${new Date(q.asOf).toLocaleString("en-US", { timeZone: "America/New_York" })} ET` : undefined}>{isYield ? "" : fmtPct(q.changePct)}</td>
             </>
           );
           return (
@@ -159,7 +159,7 @@ function CreditRows({ series }: { series: Series[] }) {
   if (series.every((s) => s.latest === null)) return <Unavailable what="FRED" />;
   const groups: { key: Series["group"]; label: string }[] = [
     { key: "spreads", label: "Spreads (OAS, bp)" },
-    { key: "rates", label: "Rates (%, FRED close, deltas in bp)" },
+    { key: "rates", label: "Rates (%, FRED H.15 close, 1-2 days behind the CBOE panel, deltas in bp)" },
     { key: "policy", label: "Policy & Funding (%, deltas in bp)" },
   ];
   return (
@@ -222,24 +222,26 @@ function GroupRows({ label, rows }: { label: string; rows: Series[] }) {
   );
 }
 
-function Wire({ news, newsErr, cat, setCat, filter, setFilter }: { news: NewsPayload | null; newsErr: string | null; cat: Category | "all"; setCat: (c: Category | "all") => void; filter: string; setFilter: (s: string) => void }) {
+type Sort = "ranked" | "latest";
+
+function Wire({ news, newsErr, cat, setCat, sort, setSort, filter, setFilter }: { news: NewsPayload | null; newsErr: string | null; cat: Category | "all"; setCat: (c: Category | "all") => void; sort: Sort; setSort: (s: Sort) => void; filter: string; setFilter: (s: string) => void }) {
+  // Lane and ranking are applied server-side; only the free-text filter is local.
   const items = useMemo(() => {
     if (!news) return [];
     let list = news.items;
-    if (cat !== "all") list = list.filter((i) => i.tags.includes(cat));
     if (filter.trim()) {
       const f = filter.toLowerCase();
       list = list.filter((i) => i.title.toLowerCase().includes(f) || i.source.toLowerCase().includes(f));
     }
     return list.slice(0, 300);
-  }, [news, cat, filter]);
+  }, [news, filter]);
 
   return (
     <Panel
       id="news"
       title="Wire"
       className="h-full"
-      right={news ? `${items.length} stories · refreshed ${hhmm(news.fetchedAt)}` : newsErr ? "error" : "loading"}
+      right={news ? `${items.length} stories · ${sort === "ranked" ? "ranked, 10% cap per source" : "newest first"} · refreshed ${hhmm(news.fetchedAt)}` : newsErr ? "error" : "loading"}
     >
       <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-line bg-panel px-2 py-1 flex-wrap">
         {(["all", ...CATEGORY_ORDER] as const).map((c) => (
@@ -251,7 +253,14 @@ function Wire({ news, newsErr, cat, setCat, filter, setFilter }: { news: NewsPay
             {c === "all" ? "All" : CATEGORY_LABELS[c]}
           </button>
         ))}
-        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="filter" aria-label="Filter headlines" className="ml-auto h-5 w-36 text-[11px]" />
+        <span className="ml-auto flex border border-line-strong" role="group" aria-label="Sort">
+          {(["ranked", "latest"] as const).map((s) => (
+            <button key={s} onClick={() => setSort(s)} className={`px-2 py-0.5 text-[10px] uppercase tracking-wider ${sort === s ? "bg-raised text-amber" : "text-dim hover:text-fg"}`}>
+              {s}
+            </button>
+          ))}
+        </span>
+        <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="filter" aria-label="Filter headlines" className="h-5 w-32 text-[11px]" />
       </div>
       {!news && !newsErr && <div className="p-3 text-dim">Pulling feeds...</div>}
       {!news && newsErr && <Unavailable what="News feeds" detail={newsErr} />}
@@ -280,9 +289,14 @@ function Wire({ news, newsErr, cat, setCat, filter, setFilter }: { news: NewsPay
 export function Board() {
   const { data: mk, err: mkErr } = usePoll<MarketBoard>("/api/markets", 60_000);
   const { data: cr, err: crErr } = usePoll<CreditPayload>("/api/credit", 30 * 60_000);
-  const { data: news, err: newsErr } = usePoll<NewsPayload>("/api/news", 3 * 60_000);
   const [cat, setCat] = useState<Category | "all">("all");
+  const [sort, setSort] = useState<Sort>("ranked");
   const [filter, setFilter] = useState("");
+  const newsUrl = `/api/news?sort=${sort}${cat === "all" ? "" : `&category=${cat}`}`;
+  const { data: news, err: newsErr } = usePoll<NewsPayload>(newsUrl, 3 * 60_000);
+
+  // Freshness per panel from the exchange, not a hardcoded word.
+  const fresh = (rows: Quote[] | undefined) => (rows ? freshness(rows.find((q) => q.asOf)) : "");
 
   const feedsDown = news?.status.filter((s) => !s.ok) ?? [];
   const quotes = (rows: Quote[] | undefined, h: string, link?: boolean) =>
@@ -294,16 +308,16 @@ export function Board() {
       <div className="xl:flex-1 xl:min-h-0 grid gap-1 p-1 grid-cols-1 xl:grid-cols-[300px_1fr_440px] xl:grid-rows-[1fr]">
         {/* Left: equities and rates. The column scrolls; panels keep their natural height. */}
         <div className="flex flex-col gap-1 xl:min-h-0 xl:overflow-auto [&>.panel]:shrink-0">
-          <Panel title="Indices" right={mk ? mk.marketState : mkErr ? "error" : "loading"}>{quotes(mk?.indices, "h-28")}</Panel>
-          <Panel title="Treasuries (CBOE, live)" right="chg in bp">{quotes(mk?.rates, "h-20")}</Panel>
-          <Panel title="Credit ETFs">{quotes(mk?.creditEtfs, "h-28", true)}</Panel>
-          <Panel title="Risk & Macro">{quotes(mk?.risk, "h-28")}</Panel>
-          <Panel title="Sectors (SPDR)">{mk ? <SectorHeat sectors={mk.sectors} /> : mkErr ? <Unavailable what="Yahoo Finance" /> : <div className="h-24 skeleton" />}</Panel>
+          <Panel title="Indices" right={mk ? fresh(mk.indices) : mkErr ? "error" : "loading"}>{quotes(mk?.indices, "h-28")}</Panel>
+          <Panel title="Treasuries (CBOE)" right={mk ? `${fresh(mk.rates)} · chg in bp` : ""}>{quotes(mk?.rates, "h-20")}</Panel>
+          <Panel title="Credit ETFs" right={mk ? fresh(mk.creditEtfs) : ""}>{quotes(mk?.creditEtfs, "h-28", true)}</Panel>
+          <Panel title="Risk & Macro" right={mk ? fresh(mk.risk.filter((q) => q.symbol !== "BTC-USD")) : ""}>{quotes(mk?.risk, "h-28")}</Panel>
+          <Panel title="Sectors (SPDR)" right={mk ? fresh(mk.sectors) : ""}>{mk ? <SectorHeat sectors={mk.sectors} /> : mkErr ? <Unavailable what="Yahoo Finance" /> : <div className="h-24 skeleton" />}</Panel>
         </div>
 
         {/* Center: wire */}
         <div className="h-[70vh] xl:h-auto xl:min-h-0">
-          <Wire news={news} newsErr={newsErr} cat={cat} setCat={setCat} filter={filter} setFilter={setFilter} />
+          <Wire news={news} newsErr={newsErr} cat={cat} setCat={setCat} sort={sort} setSort={setSort} filter={filter} setFilter={setFilter} />
         </div>
 
         {/* Right: credit */}

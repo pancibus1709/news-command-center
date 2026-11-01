@@ -49,6 +49,19 @@ export const timeAgo = (iso: string): string => {
   return `${Math.floor(s / 86400)}d`;
 };
 
+/**
+ * Freshness label for a quote panel, from the exchange state rather than a
+ * hardcoded word. "live", "delayed 15m", or "close Fri Oct 30".
+ */
+export const freshness = (q: { state: string | null; asOf: string | null; delayMin: number | null } | undefined): string => {
+  if (!q || !q.asOf) return "";
+  if (q.state === "REGULAR") return q.delayMin ? `delayed ${q.delayMin}m` : "live";
+  const d = new Date(q.asOf);
+  const day = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "America/New_York" });
+  const session = q.state === "PRE" ? "pre-mkt, last close" : q.state === "POST" ? "after hours, close" : "close";
+  return `${session} ${day}`;
+};
+
 /** One clock for the whole app: New York time, 24h. */
 export const hhmm = (iso: string): string =>
   new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" }) + " ET";

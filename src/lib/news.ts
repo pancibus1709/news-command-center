@@ -9,11 +9,14 @@ export type NewsItem = {
   source: string;
   feedId: string;
   category: Category;
-  /** Secondary tags inferred from the headline. */
+  /** Topic tags inferred from the headline, plus the lane for narrow keyword wires. */
   tags: Category[];
   publishedAt: string; // ISO
   summary: string;
   weight: number;
+  /** Ranking score: weight x topic boost x time decay. Higher first. */
+  score: number;
+  hideFromAll: boolean;
 };
 
 const parser = new Parser({
@@ -36,7 +39,7 @@ const TAGGERS: { tag: Category; re: RegExp }[] = [
 ];
 
 // Headlines that are not financial news, whatever feed they ride in on.
-const FILLER = /\b(Daily Show|Earhart|Wahlberg|Amanpour|recipe|horoscope|celebrity|late[- ]night|box office|Emmy|Grammy|Oscars?|royal family|My husband|My wife|My mother|My father|I'm \d\d and|I am \d\d and)\b/i;
+const FILLER = /\b(Daily Show|Earhart|Wahlberg|Amanpour|recipe|horoscope|celebrity|late[- ]night|box office|Emmy|Grammy|Oscars?|royal family|My husband|My wife|My mother|My father|I'm \d\d and|I am \d\d and|days? left|Founder Summit|TechCrunch (Disrupt|Sessions|Founder)|last chance to|concert|tour dates)\b/i;
 
 // Stock-promo and 13F-filler publishers that dominate Google News company queries.
 const NOISE_SOURCES = new Set([
@@ -93,7 +96,13 @@ async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
         // future. Clamp so the age column never reads 0s for hours.
         const parsed = i.isoDate ? new Date(i.isoDate) : i.pubDate ? new Date(i.pubDate) : new Date();
         const published = (Number.isNaN(parsed.getTime()) || parsed.getTime() > Date.now() ? new Date() : parsed).toISOString();
-        const tags = TAGGERS.filter((t) => t.re.test(title)).map((t) => t.tag);
+        const summary = strip(i.contentSnippet ?? i.content ?? i.summary);
+        const text = `${title} ${summary}`;
+        const contentTags = TAGGERS.filter((t) => t.re.test(text)).map((t) => t.tag);
+        // Broad newsroom feeds tag from content only; a CNBC story is not
+        // "#ai" because it also ran in the CNBC Tech feed. Narrow keyword
+        // wires keep their lane as a tag since the query defines the topic.
+        const tags = feed.broad ? contentTags : Array.from(new Set([feed.category, ...contentTags]));
         return {
           id: hash(i.link!),
           title: title.trim(),
@@ -101,10 +110,12 @@ async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           source,
           feedId: feed.id,
           category: feed.category,
-          tags: Array.from(new Set([feed.category, ...tags])),
+          tags,
           publishedAt: published,
-          summary: strip(i.contentSnippet ?? i.content ?? i.summary),
+          summary,
           weight: feed.weight,
+          score: 0,
+          hideFromAll: Boolean(feed.hideFromAll),
         };
       });
   } catch {
@@ -125,28 +136,64 @@ export async function getAllNews(): Promise<{ items: NewsItem[]; status: FeedSta
       count: results[i].length,
     }));
 
-    // Dedupe on normalized headline. Keep the higher-weight source.
+    // Dedupe on normalized headline. Keep the higher-weight copy. Tags merge
+    // across copies (they are content-derived now, so the union is honest).
     const byTitle = new Map<string, NewsItem>();
     for (const item of results.flat()) {
       const key = normalizeTitle(item.title);
       const prev = byTitle.get(key);
       if (!prev || item.weight > prev.weight) {
-        byTitle.set(key, prev ? { ...item, tags: Array.from(new Set([...prev.tags, ...item.tags])) } : item);
+        byTitle.set(key, prev ? { ...item, tags: Array.from(new Set([...prev.tags, ...item.tags])), hideFromAll: prev.hideFromAll && item.hideFromAll } : item);
       } else {
         prev.tags = Array.from(new Set([...prev.tags, ...item.tags]));
+        prev.hideFromAll = prev.hideFromAll && item.hideFromAll;
       }
     }
 
-    // Drop anything older than 3 days; stale wires add noise, not signal.
-    const cutoff = Date.now() - 3 * 24 * 60 * 60 * 1000;
-    const items = nearDupePass(
-      Array.from(byTitle.values())
-        .filter((i) => new Date(i.publishedAt).getTime() > cutoff)
-        .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()),
-    );
+    // Wires older than 3 days are noise. Official sources (weight 4+) post
+    // rarely and matter most, so they keep 10 days.
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+    const fresh = Array.from(byTitle.values()).filter((i) => {
+      const age = now - new Date(i.publishedAt).getTime();
+      return age < (i.weight >= 4 ? 10 : 3) * DAY;
+    });
 
+    for (const i of fresh) i.score = rankScore(i, now);
+
+    const items = nearDupePass(fresh.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()));
     return { items, status, fetchedAt: new Date().toISOString() };
   });
+}
+
+/**
+ * Ranking: feed weight, a boost for the lanes this board exists for, and a
+ * six-hour half-life so a high-weight story from yesterday still loses to a
+ * decent one from this morning.
+ */
+const HALF_LIFE_HOURS = 6;
+function rankScore(i: NewsItem, now: number): number {
+  const ageHours = Math.max(0, (now - new Date(i.publishedAt).getTime()) / 3_600_000);
+  const topicBoost = i.tags.includes("credit") ? 1.6 : i.tags.includes("economy") || i.tags.includes("regulatory") ? 1.3 : 1;
+  return i.weight * topicBoost * Math.pow(0.5, ageHours / HALF_LIFE_HOURS);
+}
+
+/**
+ * Ranked view with a per-publisher cap so no newsroom owns the board.
+ * `capShare` is the share of `limit` one source may take (0.1 = ten percent).
+ */
+export function rankItems(items: NewsItem[], limit: number, capShare = 0.1): NewsItem[] {
+  const cap = Math.max(3, Math.floor(limit * capShare));
+  const perSource = new Map<string, number>();
+  const out: NewsItem[] = [];
+  for (const i of [...items].sort((a, b) => b.score - a.score)) {
+    const n = perSource.get(i.source) ?? 0;
+    if (n >= cap) continue;
+    perSource.set(i.source, n + 1);
+    out.push(i);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 const tokens = (t: string) => new Set(normalizeTitle(t).split(" ").filter((w) => w.length > 3));

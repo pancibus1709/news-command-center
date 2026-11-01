@@ -16,8 +16,16 @@ export type Feed = {
   name: string;
   url: string;
   category: Category;
-  /** Higher ranks first when stories tie on time. */
+  /** Ranking weight, 1 to 5. Feeds at 4 or above are official sources and keep 10 days of history. */
   weight: number;
+  /**
+   * Broad publisher feeds (a whole newsroom, not a topic) do not stamp their
+   * lane on every story as a tag; tags come from the headline alone. The
+   * lane still comes from `category`.
+   */
+  broad?: boolean;
+  /** Shown only inside its own lane, never in the All view. */
+  hideFromAll?: boolean;
 };
 
 const gnews = (q: string) =>
@@ -25,13 +33,13 @@ const gnews = (q: string) =>
 
 export const FEEDS: Feed[] = [
   // Markets
-  { id: "cnbc-top", name: "CNBC", url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", category: "markets", weight: 3 },
-  { id: "cnbc-markets", name: "CNBC Markets", url: "https://www.cnbc.com/id/10000664/device/rss/rss.html", category: "markets", weight: 3 },
-  { id: "cnbc-finance", name: "CNBC Finance", url: "https://www.cnbc.com/id/10000113/device/rss/rss.html", category: "markets", weight: 2 },
-  { id: "wsj-markets", name: "WSJ Markets", url: "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain", category: "markets", weight: 4 },
-  { id: "mw-pulse", name: "MarketWatch", url: "https://feeds.marketwatch.com/marketwatch/marketpulse/", category: "markets", weight: 2 },
-  { id: "ft-home", name: "Financial Times", url: "https://www.ft.com/rss/home", category: "markets", weight: 4 },
-  { id: "sa-currents", name: "Seeking Alpha", url: "https://seekingalpha.com/market_currents.xml", category: "markets", weight: 1 },
+  { id: "cnbc-top", name: "CNBC", url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", category: "markets", weight: 3, broad: true },
+  { id: "cnbc-markets", name: "CNBC Markets", url: "https://www.cnbc.com/id/10000664/device/rss/rss.html", category: "markets", weight: 3, broad: true },
+  { id: "cnbc-finance", name: "CNBC Finance", url: "https://www.cnbc.com/id/10000113/device/rss/rss.html", category: "markets", weight: 2, broad: true },
+  { id: "wsj-markets", name: "WSJ Markets", url: "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain", category: "markets", weight: 4, broad: true },
+  { id: "mw-pulse", name: "MarketWatch", url: "https://feeds.marketwatch.com/marketwatch/marketpulse/", category: "markets", weight: 2, broad: true },
+  { id: "ft-home", name: "Financial Times", url: "https://www.ft.com/rss/home", category: "markets", weight: 4, broad: true },
+  { id: "sa-currents", name: "Seeking Alpha", url: "https://seekingalpha.com/market_currents.xml", category: "markets", weight: 1, broad: true },
 
   // Credit
   { id: "gn-credit", name: "Credit wire", url: gnews('"high yield" OR "leveraged loans" OR "credit markets" OR "junk bonds" OR "private credit"'), category: "credit", weight: 2 },
@@ -47,7 +55,7 @@ export const FEEDS: Feed[] = [
   { id: "politico", name: "Politico", url: "https://rss.politico.com/politics-news.xml", category: "politics", weight: 3 },
   // The Hill's firehose carries entertainment; its finance feed is empty (probed 2026-10-19).
   // Kept at weight 1 with the filler filter in news.ts doing the cleanup.
-  { id: "thehill", name: "The Hill", url: "https://thehill.com/feed/", category: "politics", weight: 1 },
+  { id: "thehill", name: "The Hill", url: "https://thehill.com/feed/", category: "politics", weight: 1, broad: true, hideFromAll: true },
 
   // Regulatory
   { id: "sec-press", name: "SEC", url: "https://www.sec.gov/news/pressreleases.rss", category: "regulatory", weight: 4 },
@@ -55,12 +63,12 @@ export const FEEDS: Feed[] = [
 
   // AI
   { id: "tc-ai", name: "TechCrunch AI", url: "https://techcrunch.com/category/artificial-intelligence/feed/", category: "ai", weight: 3 },
-  { id: "cnbc-tech", name: "CNBC Tech", url: "https://www.cnbc.com/id/19854910/device/rss/rss.html", category: "ai", weight: 2 },
+  { id: "cnbc-tech", name: "CNBC Tech", url: "https://www.cnbc.com/id/19854910/device/rss/rss.html", category: "ai", weight: 2, broad: true },
   { id: "gn-ai", name: "AI wire", url: gnews('OpenAI OR Anthropic OR Nvidia OR "AI chips" OR "data center" OR "artificial intelligence" funding'), category: "ai", weight: 1 },
 
   // World
-  { id: "wsj-world", name: "WSJ World", url: "https://feeds.content.dowjones.io/public/rss/RSSWorldNews", category: "world", weight: 3 },
-  { id: "cnbc-world", name: "CNBC World", url: "https://www.cnbc.com/id/100727362/device/rss/rss.html", category: "world", weight: 2 },
+  { id: "wsj-world", name: "WSJ World", url: "https://feeds.content.dowjones.io/public/rss/RSSWorldNews", category: "world", weight: 3, broad: true },
+  { id: "cnbc-world", name: "CNBC World", url: "https://www.cnbc.com/id/100727362/device/rss/rss.html", category: "world", weight: 2, broad: true },
 ];
 
 export const CATEGORY_LABELS: Record<Category, string> = {

@@ -9,6 +9,12 @@ export type Quote = {
   changePct: number | null;
   /** Rates quote in yield points, everything else in price. */
   unit: "price" | "yield";
+  /** Exchange session state from Yahoo: REGULAR, PRE, POST, CLOSED. */
+  state: string | null;
+  /** Time of the last trade or close, ISO. */
+  asOf: string | null;
+  /** Exchange data delay in minutes, 0 when real time. */
+  delayMin: number | null;
 };
 
 export type MarketBoard = {
@@ -90,6 +96,9 @@ export async function getMarketBoard(): Promise<MarketBoard> {
           change: q?.regularMarketChange ?? null,
           changePct: q?.regularMarketChangePercent ?? null,
           unit: d.unit ?? "price",
+          state: q?.marketState ?? null,
+          asOf: q?.regularMarketTime instanceof Date ? q.regularMarketTime.toISOString() : null,
+          delayMin: typeof q?.exchangeDataDelayedBy === "number" ? q.exchangeDataDelayedBy : null,
         };
       });
 

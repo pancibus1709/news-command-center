@@ -19,6 +19,8 @@ Copy `.env.example` to `.env.local` and set `SEC_USER_AGENT` to your name and em
 
 The site runs on Vercel at https://news-command-center-psi.vercel.app from the GitHub repo at https://github.com/pancibus1709/news-command-center. `npm run build` is a plain `next build`; the board is a client component that fetches the API routes at request time, so the static shell never goes stale. Set `SEC_USER_AGENT` in the Vercel project (Production and Preview) to your own name and email before deploying.
 
+The deployment is a private tool. ICE BofA spreads (via FRED) and Yahoo quotes are licensed for internal use only, so `src/proxy.ts` requires HTTP Basic auth on every request whenever `BASIC_AUTH` is set. Set it in Vercel before deploying (`npx vercel env add BASIC_AUTH production`, value `user:password`); without it the site is open. The v2 build plan and verified source catalog are in `docs/v2-data-spec.md`.
+
 To push a new version from this folder, log in once with `npx vercel login`, then run `npx vercel deploy --prod`. Connecting the GitHub repo in the Vercel dashboard (Project, Settings, Git) makes every push to main deploy on its own. The TTL cache in `src/lib/cache.ts` is per serverless instance, so a cold start refetches everything and the first company page after a quiet spell takes a few seconds; Yahoo Finance may also rate-limit a shared Vercel egress IP more readily than a home connection.
 
 ## Layout
