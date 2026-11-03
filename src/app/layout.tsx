@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
+// Bundled locally: next/font/google fetches from Google at startup and, when
+// that fails, silently falls back to Arial scaled 134 percent, which is how
+// the terminal lost its monospace face on 2026-11-02.
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { CommandBar } from "@/components/CommandBar";
-
-const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "News Command Center",
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${mono.variable} h-full`}>
+    <html lang="en" className={`${GeistMono.variable} h-full`}>
       <body className="h-full flex flex-col overflow-hidden">
         <CommandBar />
         <div className="flex-1 min-h-0 overflow-auto">{children}</div>
