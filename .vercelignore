@@ -1,0 +1,9 @@
+# Used instead of .gitignore for CLI uploads. Private data must never ship.
+/data
+/node_modules
+/.next
+/.git
+/.gstack
+.env*
+*.tsbuildinfo
+.DS_Store

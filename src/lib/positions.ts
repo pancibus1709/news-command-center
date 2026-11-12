@@ -15,6 +15,9 @@ export async function loadPortfolioFile(): Promise<PortfolioFile | null> {
       const text = env.startsWith("{") ? env : Buffer.from(env, "base64").toString("utf8");
       return JSON.parse(text) as PortfolioFile;
     }
+    // Hosted builds read the env var only. A stray data file in an upload
+    // must never be served: the repo and the default URL are public.
+    if (process.env.VERCEL) return null;
     try {
       const text = await readFile(path.join(process.cwd(), "data", "portfolio.json"), "utf8");
       return JSON.parse(text) as PortfolioFile;
