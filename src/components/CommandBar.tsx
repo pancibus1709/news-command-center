@@ -70,6 +70,7 @@ export function CommandBar() {
         <Link href="/" className="hover:text-fg">Board</Link>
         <Link href="/#credit" className="hover:text-fg">Credit</Link>
         <Link href="/#news" className="hover:text-fg">Wire</Link>
+        <Link href="/portfolio" className="hover:text-fg">Portfolio</Link>
       </nav>
       <div className="relative flex-1 min-w-[140px] max-w-xl">
         <input

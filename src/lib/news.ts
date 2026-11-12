@@ -42,7 +42,7 @@ const TAGGERS: { tag: Category; re: RegExp }[] = [
 const FILLER = /\b(Daily Show|Earhart|Wahlberg|Amanpour|recipe|horoscope|celebrity|late[- ]night|box office|Emmy|Grammy|Oscars?|royal family|My husband|My wife|My mother|My father|I'm \d\d and|I am \d\d and|days? left|Founder Summit|TechCrunch (Disrupt|Sessions|Founder)|last chance to|concert|tour dates)\b/i;
 
 // Stock-promo and 13F-filler publishers that dominate Google News company queries.
-const NOISE_SOURCES = new Set([
+export const NOISE_SOURCES = new Set([
   "MarketBeat", "Stocktwits", "Gotrade", "StocksToTrade", "JournalArta", "Simply Wall St", "Simply Wall Street",
   "Trefis", "Stock Titan", "Stocks Down Under", "The Motley Fool", "Motley Fool", "Zacks", "Zacks Investment Research",
   "TipRanks", "InvestorPlace", "Benzinga", "Insider Monkey", "MarketScreener", "Defense World", "ETF Daily News",
@@ -70,7 +70,7 @@ function hash(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-function normalizeTitle(t: string): string {
+export function normalizeTitle(t: string): string {
   return t.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 }
 
@@ -82,7 +82,7 @@ function splitGoogleTitle(title: string, fallback: string): { title: string; sou
   return { title, source: fallback };
 }
 
-async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
+export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
   try {
     const out = await parser.parseURL(feed.url);
     const isGoogle = feed.url.startsWith("https://news.google.com");
@@ -203,7 +203,7 @@ const tokens = (t: string) => new Set(normalizeTitle(t).split(" ").filter((w) =>
  * when its headline shares more than half its words with one kept in the
  * previous six hours. Input must be sorted newest first.
  */
-function nearDupePass(items: NewsItem[]): NewsItem[] {
+export function nearDupePass(items: NewsItem[]): NewsItem[] {
   const kept: { t: Set<string>; at: number }[] = [];
   const out: NewsItem[] = [];
   for (const item of items) {

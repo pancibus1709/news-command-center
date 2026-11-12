@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 /.gstack/
 .gstack/
+
+# private portfolio data (repo is public)
+/data/portfolio.json

@@ -65,3 +65,19 @@ export const freshness = (q: { state: string | null; asOf: string | null; delayM
 /** One clock for the whole app: New York time, 24h. */
 export const hhmm = (iso: string): string =>
   new Date(iso).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" }) + " ET";
+
+/**
+ * Full-precision dollars: 1234.5 -> "$1,234.50". With sign, "+$1,234.56" or
+ * "-$84.31"; rounded first so a -0.004 day reads $0.00, not -$0.00.
+ */
+export const fmtUsd = (v: number | null | undefined, opts: { sign?: boolean; d?: number } = {}): string => {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "--";
+  const d = opts.d ?? 2;
+  const r = +v.toFixed(d);
+  const s = r < 0 ? "-" : opts.sign && r > 0 ? "+" : "";
+  return `${s}$${Math.abs(r).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
+};
+
+/** Short New York calendar date: "Nov 18". */
+export const shortDate = (iso: string | null | undefined): string =>
+  iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }) : "--";
