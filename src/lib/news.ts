@@ -201,12 +201,18 @@ const tokens = (t: string) => new Set(normalizeTitle(t).split(" ").filter((w) =>
 /**
  * Second dedupe pass for the same story under two headlines: drop an item
  * when its headline shares more than half its words with one kept in the
- * previous six hours. Input must be sorted newest first.
+ * previous six hours. Also drops repeats of the same link. Input must be
+ * sorted newest first.
  */
 export function nearDupePass(items: NewsItem[]): NewsItem[] {
   const kept: { t: Set<string>; at: number }[] = [];
   const out: NewsItem[] = [];
+  // A publisher can re-title a story and leave both headlines in its feed
+  // under one URL. The id is the link hash and is the React key, so keep one.
+  const ids = new Set<string>();
   for (const item of items) {
+    if (ids.has(item.id)) continue;
+    ids.add(item.id);
     const t = tokens(item.title);
     const at = new Date(item.publishedAt).getTime();
     let dupe = false;
